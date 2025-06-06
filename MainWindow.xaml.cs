@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,12 +24,14 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService;
     private readonly SoundService _soundService;
     private readonly ILogger<MainWindow> _logger;
-    private readonly DispatcherTimer _countdownTimer;
-    private readonly DispatcherTimer _updateCheckTimer;
+    private readonly DispatcherTimer _countdownTimer;    private readonly DispatcherTimer _updateCheckTimer;
     private TimeSpan _remainingTime;
     private TimeSpan _totalTime;
     private bool _isRunning;
     private bool _isExpanded;
+    private bool _isPinned;
+    private DateTime _lastReminderTime = DateTime.MinValue;
+    private readonly HashSet<double> _triggeredReminders = new();
 
     public MainWindow(MainWindowViewModel viewModel, UpdateService updateService, 
         SettingsService settingsService, SoundService soundService, ILogger<MainWindow> logger)    {
@@ -103,6 +107,10 @@ public partial class MainWindow : Window
         }
     }    private void Window_MouseLeave(object sender, MouseEventArgs e)
     {
+        // 如果界面被固定，则不自动收缩
+        if (_isPinned)
+            return;
+            
         // 使用延迟检查，确保鼠标真的离开了窗口区域
         if (_isExpanded)
         {
@@ -110,7 +118,7 @@ public partial class MainWindow : Window
             {
                 Dispatcher.Invoke(() =>
                 {
-                    if (_isExpanded && !IsMouseOverWindow())
+                    if (_isExpanded && !IsMouseOverWindow() && !_isPinned)
                     {
                         ShowCompactButton();
                     }
@@ -256,9 +264,7 @@ public partial class MainWindow : Window
         StatusText.Text = "倒计时已暂停";
         
         _logger.LogInformation("倒计时已暂停");
-    }
-
-    private void ResetCountdown()
+    }    private void ResetCountdown()
     {
         _isRunning = false;
         _countdownTimer.Stop();
@@ -266,6 +272,10 @@ public partial class MainWindow : Window
         StartPauseButton.Content = "开始";
         StatusText.Text = "点击开始倒计时";
         UpdateCountdownDisplay();
+        
+        // 重置提醒状态
+        _triggeredReminders.Clear();
+        _lastReminderTime = DateTime.MinValue;
         
         _logger.LogInformation("倒计时已重置");
     }
@@ -314,16 +324,31 @@ public partial class MainWindow : Window
             // 只有当提醒时间点小于总时长时才检查
             if (reminder < totalMinutes && Math.Abs(remainingMinutes - reminder) < 0.5) // 30秒误差范围
             {
-                ShowReminder($"提醒：还剩 {reminder} 分钟");
+                // 检查是否已经为这个提醒点触发过，并且距离上次提醒至少1分钟
+                if (!_triggeredReminders.Contains(reminder) && 
+                    DateTime.Now.Subtract(_lastReminderTime).TotalMinutes >= 1)
+                {
+                    _triggeredReminders.Add(reminder);
+                    _lastReminderTime = DateTime.Now;
+                    ShowReminder($"提醒：还剩 {reminder} 分钟");
+                }
                 break;
             }
         }
-    }private void ShowReminder(string message)
+    }    private void ShowReminder(string message)
     {
-        if (_isExpanded)
+        // 强制展开并显示提醒信息
+        if (!_isExpanded)
         {
-            StatusText.Text = message;
+            ShowExpandedPanel();
         }
+        
+        // 更新状态文本
+        StatusText.Text = message;
+        
+        // 添加视觉提醒效果 - 改变边框颜色
+        ExpandedPanel.BorderBrush = System.Windows.Media.Brushes.Orange;
+        ExpandedPanel.BorderThickness = new Thickness(3);
         
         // 播放声音通知
         var settings = _settingsService.LoadSettings();
@@ -331,13 +356,21 @@ public partial class MainWindow : Window
         {
             _soundService.PlayNotificationSound();
         }
-        
-        // 显示自定义通知窗口
-        var displayDuration = settings.NotificationDuration / 1000;
-        NotificationWindow.ShowNotification(message, displayDuration);
+          // 3秒后恢复正常边框
+        var resetTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        resetTimer.Tick += (s, e) =>
+        {
+            ExpandedPanel.BorderBrush = new SolidColorBrush(Color.FromRgb(0x19, 0x76, 0xD2));
+            ExpandedPanel.BorderThickness = new Thickness(2);
+            resetTimer.Stop();
+        };
+        resetTimer.Start();
         
         _logger.LogInformation($"显示提醒: {message}");
-    }    private void CountdownFinished()
+    }private void CountdownFinished()
     {
         _isRunning = false;
         _countdownTimer.Stop();
@@ -410,5 +443,31 @@ public partial class MainWindow : Window
         _countdownTimer?.Stop();
         _updateCheckTimer?.Stop();
         base.OnClosing(e);
+    }
+
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isPinned = !_isPinned;
+        
+        if (_isPinned)
+        {
+            // 固定显示界面
+            PinButton.Content = "📍"; // 换成实心图钉表示已固定
+            PinButton.ToolTip = "取消固定界面";
+            
+            // 强制显示展开面板
+            if (!_isExpanded)
+            {
+                ShowExpandedPanel();
+            }
+        }
+        else
+        {
+            // 取消固定
+            PinButton.Content = "📌"; // 空心图钉表示未固定
+            PinButton.ToolTip = "固定显示界面";
+        }
+        
+        _logger.LogInformation($"界面固定状态: {_isPinned}");
     }
 }

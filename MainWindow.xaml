@@ -54,6 +54,9 @@
                 <Grid Grid.Row="0">
                     <TextBlock Text="PPT倒计时" FontSize="14" FontWeight="Bold" Foreground="White" 
                                HorizontalAlignment="Left" VerticalAlignment="Center"/>                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="PinButton" Content="📌" 
+                                Width="24" Height="24" Background="Transparent" Foreground="White" BorderThickness="0"
+                                Click="PinButton_Click" ToolTip="固定显示界面"/>
                         <Button x:Name="SettingsButton" Content="⚙" 
                                 Width="24" Height="24" Background="Transparent" Foreground="White" BorderThickness="0"
                                 Click="SettingsButton_Click"/>
