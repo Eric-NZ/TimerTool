@@ -1,0 +1,9 @@
+{
+  "version": "1.1.0",
+  "downloadUrl": "https://github.com/your-repo/TimerTool/releases/download/v1.1.0/TimerTool-v1.1.0.exe",
+  "releaseNotes": "修复倒计时显示bug\n增加新的提醒音效\n优化性能\n修复设置保存问题",
+  "forceUpdate": false,
+  "releaseDate": "2025-06-06T10:00:00Z",
+  "fileSize": 85234567,
+  "sha256": "abc123def456789..."
+}
