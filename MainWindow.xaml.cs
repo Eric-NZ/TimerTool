@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -313,29 +314,49 @@ public partial class MainWindow : Window
         {
             CountdownText.Foreground = System.Windows.Media.Brushes.White;
         }
-    }    private void CheckReminders()
+    }
+
+    private void CheckReminders()
     {
         var settings = _settingsService.LoadSettings();
-        var totalMinutes = _totalTime.TotalMinutes;
         var remainingMinutes = _remainingTime.TotalMinutes;
-        
-        foreach (var reminder in settings.ReminderPoints)
+
+        // 对于正在进行的倒计时，检查是否达到提醒时间点
+        if (_remainingTime.TotalSeconds > 0)
         {
-            // 只有当提醒时间点小于总时长时才检查
-            if (reminder < totalMinutes && Math.Abs(remainingMinutes - reminder) < 0.5) // 30秒误差范围
+            foreach (var reminder in settings.ReminderPoints)
             {
-                // 检查是否已经为这个提醒点触发过，并且距离上次提醒至少1分钟
-                if (!_triggeredReminders.Contains(reminder) && 
-                    DateTime.Now.Subtract(_lastReminderTime).TotalMinutes >= 1)
+                // 检查是否达到提醒时间点（允许30秒的误差范围）
+                if (Math.Abs(remainingMinutes - reminder) <= 0) // N秒误差范围，当前N为0
                 {
-                    _triggeredReminders.Add(reminder);
-                    _lastReminderTime = DateTime.Now;
-                    ShowReminder($"提醒：还剩 {reminder} 分钟");
+                    // 检查是否已经为这个提醒点触发过
+                    if (!_triggeredReminders.Contains(reminder))
+                    {
+                        _triggeredReminders.Add(reminder);
+                        _lastReminderTime = DateTime.Now;
+                        ShowReminder($"提醒：还剩 {reminder} 分钟");
+                        break; // 一次只处理一个提醒点
+                    }
                 }
-                break;
             }
         }
-    }    private void ShowReminder(string message)
+        // 处理倒计时结束后的提醒（按设定的最小提醒间隔继续提醒）
+        else
+        {
+            // 找到最小的提醒间隔作为后续提醒的间隔
+            var minReminderInterval = settings.ReminderPoints.Count > 0
+                ? settings.ReminderPoints.Min()
+                : 1.0; // 默认1分钟
+
+            var timeSinceLastReminder = DateTime.Now.Subtract(_lastReminderTime).TotalMinutes;
+            if (timeSinceLastReminder >= minReminderInterval)
+            {
+                _lastReminderTime = DateTime.Now;
+                ShowReminder("时间超时提醒！");
+            }
+        }
+    }
+    private void ShowReminder(string message)
     {
         // 强制展开并显示提醒信息
         if (!_isExpanded)
@@ -370,7 +391,9 @@ public partial class MainWindow : Window
         resetTimer.Start();
         
         _logger.LogInformation($"显示提醒: {message}");
-    }private void CountdownFinished()
+    }
+
+    private void CountdownFinished()
     {
         _isRunning = false;
         _countdownTimer.Stop();
@@ -378,16 +401,16 @@ public partial class MainWindow : Window
         StatusText.Text = "倒计时结束！";
         CountdownText.Text = "00:00:00";
         CountdownText.Foreground = System.Windows.Media.Brushes.Red;
-        
+
         // 播放结束声音
         var settings = _settingsService.LoadSettings();
         if (settings.EnableSoundNotification)
         {
             _soundService.PlayFinishSound();
         }
-        
+
         ShowReminder("时间到！PPT汇报时间结束");
-        
+
         _logger.LogInformation("倒计时结束");
     }
 
